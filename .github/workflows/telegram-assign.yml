@@ -1,0 +1,27 @@
+name: Telegram notify on assign
+
+on:
+  issues:
+    types: [assigned]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send message to Telegram
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ASSIGNEE: ${{ github.event.assignee.login }}
+          SENDER: ${{ github.event.sender.login }}
+          TITLE: ${{ github.event.issue.title }}
+          NUMBER: ${{ github.event.issue.number }}
+          URL: ${{ github.event.issue.html_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          TEXT=$(printf '📌 Новая задача назначена\n\n#%s %s\nИсполнитель: @%s\nНазначил: @%s\nРепозиторий: %s\n\n%s' \
+            "$NUMBER" "$TITLE" "$ASSIGNEE" "$SENDER" "$REPO" "$URL")
+          jq -n --arg chat "$TG_CHAT" --arg text "$TEXT" \
+            '{chat_id: $chat, text: $text, disable_web_page_preview: true}' \
+          | curl -sf -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              -H 'Content-Type: application/json' -d @-
