@@ -1,0 +1,47 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+*.suo
+*.user
+.vs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+*.egg-info/
+dist/
+
+# C/C++ / CMake
+build/
+cmake-build-*/
+out/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.lib
+*.pdb
+*.ilk
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*~
+
+# Office lock files (docs/)
+~$*
