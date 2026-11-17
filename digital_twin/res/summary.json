@@ -1,0 +1,101 @@
+{
+  "completed": true,
+  "enabled_features": {
+    "vio": false,
+    "radar_altimeter": false,
+    "landmark_correction": false
+  },
+  "flight_time_s": 740.8049999993988,
+  "ideal_route_length_m": 5625.352439515724,
+  "actual_route_length_m": 5615.572354617679,
+  "mean_ground_speed_m_s": 7.576991618455152,
+  "max_ground_speed_m_s": 13.201189308938806,
+  "route_error_rms_m": 3.628847059798875,
+  "route_error_max_m": 10.156766074011994,
+  "horizontal_route_error_rms_m": 3.5279187904536293,
+  "navigation_error_rms_m": 7.244077410975416,
+  "navigation_error_max_m": 12.972323234095763,
+  "final_navigation_error_m": 12.907558720214476,
+  "barometer_error_rms_m": 0.27782866587574107,
+  "heading_error_rms_deg": 13.191853225020406,
+  "heading_error_max_abs_deg": 71.81352153755518,
+  "minimum_agl_m": 2.0,
+  "minimum_en_route_agl_m": 26.435116117652612,
+  "map_fix_attempts": 0,
+  "map_corrections": 0,
+  "failed_map_fixes": 0,
+  "magnetic_rejections": 269,
+  "velocity_updates": 14815,
+  "vio_outage_s": 0.0,
+  "final_gyro_bias_estimate_deg_s": 0.4625525469361369,
+  "final_accel_bias_estimate_m_s2": 5.162816194550914,
+  "no_fly_zone_violations": 0,
+  "bridge_deck_clearance_m": 5.981875803006034,
+  "bridge_passed_under_deck": true,
+  "events": [
+    {
+      "number": 1,
+      "name": "Запретная зона",
+      "required_extra_percent": 20.0,
+      "route_extra_percent": 19.999999999999996,
+      "direct_length_m": 300.0,
+      "detour_length_m": 360.0
+    },
+    {
+      "number": 2,
+      "name": "Вертикальный облёт 1",
+      "required_extra_percent": 4.0,
+      "route_extra_percent": 4.0000000000000036,
+      "direct_length_m": 210.04201260420132,
+      "detour_length_m": 218.4436931083694
+    },
+    {
+      "number": 3,
+      "name": "Вертикальный облёт 2",
+      "required_extra_percent": 4.0,
+      "route_extra_percent": 4.0000000000000036,
+      "direct_length_m": 210.04201260420132,
+      "detour_length_m": 218.4436931083694
+    },
+    {
+      "number": 4,
+      "name": "Вертикальный облёт 3",
+      "required_extra_percent": 4.0,
+      "route_extra_percent": 4.0000000000000036,
+      "direct_length_m": 210.04201260420132,
+      "detour_length_m": 218.4436931083694
+    },
+    {
+      "number": 5,
+      "name": "Поворот на 4 %",
+      "required_extra_percent": 4.0,
+      "route_extra_percent": 4.0000000000000036,
+      "direct_length_m": 300.0,
+      "detour_length_m": 312.0
+    },
+    {
+      "number": 6,
+      "name": "Поворот на 5 %",
+      "required_extra_percent": 5.0,
+      "route_extra_percent": 5.000000000000004,
+      "direct_length_m": 300.0,
+      "detour_length_m": 315.0
+    },
+    {
+      "number": 7,
+      "name": "Поворот на 6 %",
+      "required_extra_percent": 6.0,
+      "route_extra_percent": 6.000000000000005,
+      "direct_length_m": 300.0,
+      "detour_length_m": 318.0
+    },
+    {
+      "number": 8,
+      "name": "Стальной мост",
+      "required_extra_percent": 4.0,
+      "route_extra_percent": 4.0000000000000036,
+      "direct_length_m": 245.04901470490154,
+      "detour_length_m": 254.8509752930976
+    }
+  ]
+}
