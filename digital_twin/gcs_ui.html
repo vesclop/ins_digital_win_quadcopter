@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Цифровой двойник БПЛА · 3D Ground Control Station</title>
+<style>
+  :root {
+    --bg: #080d17;
+    --panel: rgba(13, 21, 36, 0.94);
+    --card: rgba(20, 31, 52, 0.85);
+    --border: rgba(94, 134, 198, 0.24);
+    --text: #e2e8f0;
+    --muted: #8ea0bc;
+    --accent: #38bdf8;
+    --ok: #10b981;
+    --warn: #f59e0b;
+    --err: #ef4444;
+    --purple: #a855f7;
+    --mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 13px;
+  }
+
+  /* Верхняя командная панель */
+  #topbar {
+    height: 52px; display: flex; align-items: center; gap: 10px;
+    padding: 0 14px; background: #0b1322;
+    border-bottom: 1px solid var(--border);
+    user-select: none; z-index: 20; position: relative;
+  }
+  .brand { font-weight: 700; font-size: 14px; letter-spacing: 0.02em; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .pill {
+    padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    font-family: var(--mono); white-space: nowrap;
+  }
+  .pill-err { background: rgba(239,68,68,.18); color: #f87171; border: 1px solid rgba(239,68,68,.45); }
+  .pill-ok { background: rgba(16,185,129,.18); color: #34d399; border: 1px solid rgba(16,185,129,.45); }
+  .pill-warn { background: rgba(245,158,11,.18); color: #fbbf24; border: 1px solid rgba(245,158,11,.45); }
+  .pill-info { background: rgba(56,189,248,.16); color: #38bdf8; border: 1px solid rgba(56,189,248,.4); }
+
+  .sep { width: 1px; height: 24px; background: var(--border); margin: 0 2px; }
+  button, select, input[type="number"] {
+    background: #152238; color: var(--text); border: 1px solid var(--border);
+    border-radius: 7px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  button:hover, select:hover { border-color: var(--accent); background: #1b2c49; }
+  button.primary { background: #0284c7; border-color: #38bdf8; font-weight: 600; }
+  button.primary:hover { background: #0369a1; }
+  button.active { background: rgba(56,189,248,.22); border-color: var(--accent); color: #fff; }
+  .chk-group { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+  .chk-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+  .chk-group input { accent-color: var(--accent); cursor: pointer; }
+  .spacer { flex: 1; }
+
+  /* Основная сетка */
+  #workspace {
+    display: flex; width: 100%; height: calc(100vh - 52px); position: relative;
+  }
+  #viewport-wrap {
+    flex: 1; position: relative; overflow: hidden; background: #060b14;
+  }
+  #three-canvas { width: 100%; height: 100%; display: block; }
+
+  /* Плавающие HUD-элементы поверх 3D */
+  #hud-pfd {
+    position: absolute; top: 12px; left: 12px; width: 204px;
+    background: rgba(8, 13, 24, 0.78); backdrop-filter: blur(8px);
+    border: 1px solid var(--border); border-radius: 12px; padding: 8px;
+    pointer-events: none;
+  }
+  #pfd-canvas { width: 186px; height: 186px; display: block; border-radius: 8px; }
+  .pfd-footer {
+    display: flex; justify-content: space-between; margin-top: 6px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+
+  #hud-stage {
+    position: absolute; top: 12px; left: 228px; right: 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    pointer-events: none;
+  }
+  .stage-box {
+    background: rgba(8, 13, 24, 0.78); backdrop-filter: blur(8px);
+    border: 1px solid var(--border); border-radius: 10px; padding: 7px 12px;
+    display: flex; align-items: center; gap: 12px; pointer-events: auto;
+  }
+  .stage-title { font-weight: 700; color: #fff; font-size: 13px; }
+  .stage-sub { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+
+  #hud-bottom {
+    position: absolute; bottom: 12px; left: 12px; right: 12px;
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+    pointer-events: none;
+  }
+  .progress-panel {
+    flex: 1; max-width: 680px; pointer-events: auto;
+    background: rgba(8, 13, 24, 0.82); backdrop-filter: blur(8px);
+    border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px;
+  }
+  .prog-header { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; margin-bottom: 6px; color: var(--muted); }
+  .prog-track { position: relative; height: 10px; background: #162238; border-radius: 99px; overflow: visible; }
+  .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #0284c7, #38bdf8, #34d399); border-radius: 99px; transition: width 0.12s; }
+  .obs-dot {
+    position: absolute; top: -3px; width: 6px; height: 16px; border-radius: 3px;
+    background: #f59e0b; transform: translateX(-50%); cursor: pointer;
+    border: 1px solid #080d17;
+  }
+  .obs-dot.bridge { background: #a855f7; width: 8px; }
+  .obs-dot.nofly { background: #ef4444; }
+  .obs-dot:hover { transform: translateX(-50%) scale(1.3); }
+
+  .legend-panel {
+    pointer-events: auto; background: rgba(8, 13, 24, 0.82); backdrop-filter: blur(8px);
+    border: 1px solid var(--border); border-radius: 10px; padding: 8px 11px;
+    font-size: 11px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .leg-row { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .swatch { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
+
+  /* Правая панель телеметрии */
+  #sidebar {
+    width: 415px; height: 100%; background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto; padding: 10px 12px 18px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  #sidebar::-webkit-scrollbar { width: 6px; }
+  #sidebar::-webkit-scrollbar-thumb { background: rgba(148,163,184,.28); border-radius: 4px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 11px;
+  }
+  .card-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px; font-weight: 700; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.04em; color: #cbd5e1;
+  }
+
+  /* Виджет батареи */
+  .bat-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bat-pct { font-family: var(--mono); font-size: 24px; font-weight: 800; min-width: 78px; }
+  .bat-shell {
+    flex: 1; height: 22px; border: 2px solid #475569; border-radius: 5px;
+    padding: 2px; position: relative; background: #0a101d;
+  }
+  .bat-shell::after {
+    content: ""; position: absolute; right: -6px; top: 5px;
+    width: 4px; height: 8px; background: #475569; border-radius: 0 2px 2px 0;
+  }
+  .bat-fill { height: 100%; width: 100%; border-radius: 2px; background: var(--ok); transition: width 0.2s, background 0.3s; }
+
+  .kv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .kv-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .kv {
+    background: rgba(8, 13, 24, 0.55); border: 1px solid rgba(94,134,198,.14);
+    border-radius: 7px; padding: 5px 7px;
+  }
+  .kv .k { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+  .kv .v { font-family: var(--mono); font-size: 12.5px; font-weight: 700; margin-top: 2px; color: #f1f5f9; }
+
+  /* Карточки датчиков */
+  .sensor-row {
+    border-top: 1px solid rgba(94,134,198,.14); padding-top: 7px; margin-top: 7px;
+  }
+  .sensor-row:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .sensor-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: 600; font-size: 11.5px; }
+  .mono-line { font-family: var(--mono); font-size: 11px; color: #cbd5e1; line-height: 1.5; }
+  .mag-bar-wrap { position: relative; height: 8px; background: #0f172a; border-radius: 4px; margin-top: 5px; overflow: hidden; }
+  .mag-safe { position: absolute; left: 37%; width: 24%; top: 0; bottom: 0; background: rgba(16,185,129,.25); border-left: 1px dashed #10b981; border-right: 1px dashed #10b981; }
+  .mag-needle { position: absolute; top: 0; bottom: 0; width: 4px; background: #38bdf8; border-radius: 2px; transition: left 0.1s; }
+
+  /* Живой осциллограф */
+  .scope-tabs { display: flex; gap: 4px; margin-bottom: 7px; }
+  .scope-tabs button { flex: 1; padding: 4px 5px; font-size: 10.5px; }
+  #scope-canvas { width: 100%; height: 138px; display: block; background: #070c16; border-radius: 7px; border: 1px solid rgba(94,134,198,.18); }
+
+  /* Журнал событий */
+  #event-log {
+    max-height: 130px; overflow-y: auto; font-family: var(--mono); font-size: 10.8px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .ev-item { padding: 4px 6px; border-radius: 5px; background: rgba(8,13,24,.55); border-left: 3px solid var(--accent); line-height: 1.35; }
+  .ev-item.ok { border-left-color: var(--ok); }
+  .ev-item.warn { border-left-color: var(--warn); background: rgba(245,158,11,.10); }
+  .ev-item.err { border-left-color: var(--err); background: rgba(239,68,68,.12); }
+
+  #offline-warn {
+    display: none; position: absolute; inset: 0; z-index: 50;
+    background: rgba(8,13,24,.92); align-items: center; justify-content: center;
+    padding: 24px; text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="brand">🛸 БИНС-БПЛА <span class="pill pill-err">ГНСС ОТКЛ</span><span class="pill pill-info">EKF15</span></div>
+  <div class="sep"></div>
+
+  <button id="btn-play" class="primary">▶ Старт</button>
+  <button id="btn-reset">↺ Сброс</button>
+
+  <select id="sel-speed" title="Ускорение времени симуляции">
+    <option value="1">1× (Реальное время)</option>
+    <option value="2">2×</option>
+    <option value="5" selected>5×</option>
+    <option value="10">10×</option>
+    <option value="25">25×</option>
+  </select>
+
+  <select id="sel-jump" title="Перейти прямо к препятствию">
+    <option value="">⏩ Прыжок к препятствию...</option>
+  </select>
+
+  <div class="sep"></div>
+  <div id="cam-buttons" style="display:flex; gap:4px;">
+    <button data-cam="chase" class="active">🎯 Chase</button>
+    <button data-cam="fpv">👁️ FPV</button>
+    <button data-cam="orbit">🌐 Orbit</button>
+    <button data-cam="top">🗺️ Top</button>
+  </div>
+
+  <div class="sep"></div>
+  <div class="chk-group">
+    <label title="Визуальная одометрия (20 Гц)"><input type="checkbox" id="chk-vio"> VIO</label>
+    <label title="Радиовысотомер (50 Гц)"><input type="checkbox" id="chk-ralt"> РВ</label>
+    <label title="Коррекция по ориентирам"><input type="checkbox" id="chk-lm"> Ориентиры</label>
+    <label>Seed <input type="number" id="inp-seed" value="42" min="0" max="99999" style="width:62px; padding:3px 6px;"></label>
+  </div>
+  <div class="spacer"></div>
+</div>
+
+<div id="workspace">
+  <div id="viewport-wrap">
+    <canvas id="three-canvas"></canvas>
+
+    <!-- PFD Авиагоризонт -->
+    <div id="hud-pfd">
+      <canvas id="pfd-canvas" width="186" height="186"></canvas>
+      <div class="pfd-footer">
+        <span id="pfd-att">R 0.0° · P 0.0°</span>
+        <span id="pfd-hdg">HDG 090°</span>
+      </div>
+    </div>
+
+    <!-- Верхний оверлей этапа -->
+    <div id="hud-stage">
+      <div class="stage-box">
+        <div>
+          <div class="stage-title" id="hud-stage-label">Инициализация...</div>
+          <div class="stage-sub" id="hud-clock">T+ 00:00.0 · X: 0 м · AGL: 2.0 м</div>
+        </div>
+        <span id="hud-mag-badge" class="pill pill-ok">КОМПАС OK</span>
+        <span id="hud-water-badge" class="pill pill-info" style="display:none;">НАД ВОДОЙ</span>
+      </div>
+      <div class="stage-box" style="gap:8px;">
+        <label style="font-size:11px; color:var(--muted); cursor:pointer; display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" id="chk-ellipsoid" checked> 3σ EKF
+        </label>
+        <label style="font-size:11px; color:var(--muted); cursor:pointer; display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" id="chk-beams" checked> Лучи радара
+        </label>
+      </div>
+    </div>
+
+    <!-- Нижняя панель маршрута и легенды -->
+    <div id="hud-bottom">
+      <div class="progress-panel">
+        <div class="prog-header">
+          <span>МАРШРУТ МИССИИ (нажмите на маркер для прыжка)</span>
+          <span id="prog-text">0 / 5450 м (0%)</span>
+        </div>
+        <div class="prog-track" id="prog-track">
+          <div class="prog-fill" id="prog-fill"></div>
+        </div>
+      </div>
+
+      <div class="legend-panel">
+        <div class="leg-row"><span class="swatch" style="background:#3b82f6;"></span> Идеальный маршрут</div>
+        <div class="leg-row"><span class="swatch" style="background:#ef4444;"></span> Фактический полёт (Истина)</div>
+        <div class="leg-row"><span class="swatch" style="background:#22d3ee;"></span> Оценка БИНС (EKF15) + 3σ</div>
+        <div class="leg-row"><span class="swatch" style="background:#f59e0b;"></span> Лучи радара IWR6843AOP</div>
+      </div>
+    </div>
+
+    <div id="offline-warn">
+      <div>
+        <h2 style="margin-bottom:10px; color:#f87171;">Не удалось загрузить Three.js</h2>
+        <p style="color:#cbd5e1; max-width:500px; line-height:1.5;">
+          Проверьте интернет-соединение или сохраните файл <code>three.min.js</code> рядом с <code>gcs_ui.html</code> в папке <code>digital_twin/</code> для полностью автономной работы.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Правая панель телеметрии -->
+  <div id="sidebar">
+
+    <!-- 1. Аккумулятор -->
+    <div class="card">
+      <div class="card-head">
+        <span>🔋 Аккумулятор (4S LiPo · 5000 мА·ч)</span>
+        <span id="bat-rem" style="font-family:var(--mono); color:var(--ok);">~41.0 мин</span>
+      </div>
+      <div class="bat-top">
+        <div class="bat-pct" id="bat-soc" style="color:var(--ok);">100.0%</div>
+        <div class="bat-shell"><div class="bat-fill" id="bat-fill"></div></div>
+      </div>
+      <div class="kv-grid">
+        <div class="kv"><div class="k">Напряжение</div><div class="v" id="bat-v">16.65 В</div></div>
+        <div class="kv"><div class="k">Ток</div><div class="v" id="bat-a">6.7 А</div></div>
+        <div class="kv"><div class="k">Мощность</div><div class="v" id="bat-w">112 Вт</div></div>
+        <div class="kv"><div class="k">Расход</div><div class="v" id="bat-mah">0 мА·ч</div></div>
+        <div class="kv"><div class="k">Темп. АКБ</div><div class="v" id="bat-t">22.0 °C</div></div>
+        <div class="kv"><div class="k">Ветер</div><div class="v" id="env-wind">0.5 м/с</div></div>
+      </div>
+    </div>
+
+    <!-- 2. Параметры полёта и EKF15 -->
+    <div class="card">
+      <div class="card-head">
+        <span>🧭 Полёт и точность БИНС (EKF15)</span>
+        <span id="stat-safety" class="pill pill-ok">БЕЗОПАСНО</span>
+      </div>
+      <div class="kv-grid">
+        <div class="kv"><div class="k">Скорость</div><div class="v" id="fl-spd">0.00 м/с</div></div>
+        <div class="kv"><div class="k">Высота Z</div><div class="v" id="fl-z">113.0 м</div></div>
+        <div class="kv"><div class="k">Высота AGL</div><div class="v" id="fl-agl">2.0 м</div></div>
+        <div class="kv"><div class="k">Ошибка БИНС</div><div class="v" id="err-nav" style="color:#fb923c;">0.00 м</div></div>
+        <div class="kv"><div class="k">СКО / Макс</div><div class="v" id="err-rms">0.0 / 0.0 м</div></div>
+        <div class="kv"><div class="k">Откл. трассы</div><div class="v" id="err-rt">0.00 м</div></div>
+        <div class="kv"><div class="k">Ошибка курса</div><div class="v" id="err-hdg">0.00°</div></div>
+        <div class="kv"><div class="k">3σ EKF (XY)</div><div class="v" id="ekf-sig">3.0 м</div></div>
+        <div class="kv"><div class="k">Запас моста</div><div class="v" id="stat-bridge">—</div></div>
+      </div>
+    </div>
+
+    <!-- 3. Показания всех датчиков -->
+    <div class="card">
+      <div class="card-head"><span>📡 Телеметрия датчиков авионики</span><span style="font-size:10px; color:var(--muted);">LIVE</span></div>
+
+      <div class="sensor-row">
+        <div class="sensor-hdr"><span>⚙️ IMU · ICM-42688-P (200 Гц)</span><span id="imu-bias" style="font-family:var(--mono); font-size:10px; color:var(--muted);">b_g: 0.000°/с</span></div>
+        <div class="mono-line" id="imu-val">ω: [0.00, 0.00, 0.00] °/с<br>f: [0.00, 0.00, -9.81] м/с²</div>
+      </div>
+
+      <div class="sensor-row">
+        <div class="sensor-hdr"><span>🌡️ Барометр · BMP390 (25 Гц)</span><span id="baro-temp" style="font-family:var(--mono); font-size:10px; color:var(--muted);">15.0 °C</span></div>
+        <div class="mono-line" id="baro-val">H: 113.0 м (Δ +0.00 м) · P: 99980 Па</div>
+      </div>
+
+      <div class="sensor-row">
+        <div class="sensor-hdr">
+          <span>🧲 Магнитометр · IST8310 (50 Гц)</span>
+          <span id="mag-status" class="pill pill-ok">ПРИНЯТ</span>
+        </div>
+        <div class="mono-line" id="mag-val">Курс: 90.0° · |B|: 49.2 мкТл · Отбр: 0</div>
+        <div class="mag-bar-wrap" title="Допустимый коридор валидации: 49.24 ± 12 мкТл">
+          <div class="mag-safe"></div>
+          <div class="mag-needle" id="mag-needle" style="left:49%;"></div>
+        </div>
+      </div>
+
+      <div class="sensor-row">
+        <div class="sensor-hdr">
+          <span>📶 Радар · IWR6843AOP (62 ГГц, 20 Гц)</span>
+          <span id="rad-surf" class="pill pill-info">ЗЕМЛЯ</span>
+        </div>
+        <div class="mono-line" id="rad-val">V: 0.00 м/с · |f_D|: 0 Гц<br>Лучи: [0.0, 0.0, 0.0] м/с</div>
+      </div>
+
+      <div class="sensor-row">
+        <div class="sensor-hdr"><span>🛰️ Доп. каналы (VIO / РВ / Ориентиры)</span></div>
+        <div class="mono-line" id="opt-val">VIO: ОТКЛ · РВ: ОТКЛ · Ориентиры: ОТКЛ</div>
+      </div>
+    </div>
+
+    <!-- 4. Живые графики -->
+    <div class="card">
+      <div class="card-head"><span>📈 Живой осциллограф (последние 60 с)</span></div>
+      <div class="scope-tabs" id="scope-tabs">
+        <button data-scope="err" class="active">БИНС ±3σ</button>
+        <button data-scope="mag">Маг |B|</button>
+        <button data-scope="alt">Высота</button>
+        <button data-scope="pwr">АКБ (Вт)</button>
+      </div>
+      <canvas id="scope-canvas" width="380" height="138"></canvas>
+    </div>
+
+    <!-- 5. Бортовой журнал событий -->
+    <div class="card">
+      <div class="card-head"><span>📋 Бортовой журнал событий</span></div>
+      <div id="event-log"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Загрузка Three.js: сначала локальный файл, затем CDN -->
+<script>
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  (async function bootstrapThree() {
+    const urls = [
+      "/three.min.js",
+      "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js",
+      "https://unpkg.com/three@0.128.0/build/three.min.js"
+    ];
+    for (const u of urls) {
+      try { await loadScript(u); if (window.THREE) break; } catch (_) {}
+    }
+    if (!window.THREE) {
+      document.getElementById("offline-warn").style.display = "flex";
+      return;
+    }
+    initApp();
+  })();
+</script>
+
+<script>
+// ==================== ГЛАВНОЕ ПРИЛОЖЕНИЕ ====================
+async function initApp() {
+  const initResp = await fetch("/api/init");
+  const initData = await initResp.json();
+  const sceneData = initData.scene;
+
+  // --- Состояние ---
+  let playing = false;
+  let speedMult = 5;
+  let camMode = "chase";
+  let scopeMode = "err";
+  let lastPkt = initData.telemetry;
+  let stepInFlight = false;
+  let idealLength = sceneData.ideal_length_m;
+
+  // Буфер истории для осциллографа
+  const HIST_MAX = 240;
+  const hist = [];
+
+  // --- Настройка Three.js ---
+  const canvas = document.getElementById("three-canvas");
+  const wrap = document.getElementById("viewport-wrap");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  renderer.setClearColor(0x091324);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x0b1628, 0.00028);
+
+  const camera = new THREE.PerspectiveCamera(54, wrap.clientWidth / wrap.clientHeight, 0.5, 16000);
+
+  // Свет + небо
+  scene.add(new THREE.HemisphereLight(0x93c5fd, 0x1e293b, 0.85));
+  const sun = new THREE.DirectionalLight(0xfff4d6, 1.05);
+  sun.position.set(2200, 1800, 1400);
+  scene.add(sun);
+
+  // Преобразование ENU (x=East, y=North, z=Up) -> Three.js (x=East, y=Up, z=-North)
+  const enuToThree = (x, y, z) => new THREE.Vector3(x, z, -y);
+
+  // --- 1. Рельеф местности ---
+  function buildTerrain(t) {
+    const { nx, ny, x, y, z } = t;
+    const positions = new Float32Array(nx * ny * 3);
+    const colors = new Float32Array(nx * ny * 3);
+    let zMin = Infinity, zMax = -Infinity;
+    for (let i = 0; i < z.length; i++) {
+      if (z[i] < zMin) zMin = z[i];
+      if (z[i] > zMax) zMax = z[i];
+    }
+
+    const col = new THREE.Color();
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const idx = iy * nx + ix;
+        const h = z[idx];
+        positions[idx * 3] = x[ix];
+        positions[idx * 3 + 1] = h;
+        positions[idx * 3 + 2] = -y[iy];
+
+        const norm = (h - zMin) / Math.max(zMax - zMin, 1);
+        if (norm < 0.22) col.setRGB(0.16, 0.28 + norm, 0.22);        // низина / берег
+        else if (norm < 0.58) col.setRGB(0.18 + norm * 0.25, 0.44, 0.20); // луга
+        else if (norm < 0.82) col.setRGB(0.45, 0.40, 0.26);          // возвышенности
+        else col.setRGB(0.62, 0.56, 0.48);                           // вершины холмов
+        colors[idx * 3] = col.r;
+        colors[idx * 3 + 1] = col.g;
+        colors[idx * 3 + 2] = col.b;
+      }
+    }
+
+    const indices = [];
+    for (let iy = 0; iy < ny - 1; iy++) {
+      for (let ix = 0; ix < nx - 1; ix++) {
+        const a = iy * nx + ix;
+        const b = a + 1;
+        const c = a + nx;
+        const d = c + 1;
+        indices.push(a, b, c, b, d, c);
+      }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.9, metalness: 0.04, side: THREE.DoubleSide
+    });
+    scene.add(new THREE.Mesh(geo, mat));
+
+    // Тонкая топографическая сетка поверх рельефа
+    const wire = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.055 })
+    );
+    wire.position.y = 0.25;
+    scene.add(wire);
+  }
+  buildTerrain(sceneData.terrain);
+
+  // --- 2. Река в ущелье у моста (x = 4800 ± 140 м) ---
+  const waterY = sceneData.bridge_terrain_z + 5.5;
+  const waterMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(280, 840),
+    new THREE.MeshStandardMaterial({
+      color: 0x0284c7, emissive: 0x03243b, roughness: 0.25, metalness: 0.35,
+      transparent: true, opacity: 0.78
+    })
+  );
+  waterMesh.rotation.x = -Math.PI / 2;
+  waterMesh.position.set(4800, waterY, 0);
+  scene.add(waterMesh);
+
+  // --- 3. Препятствия и 3D-мост ---
+  function buildObstacles() {
+    const selJump = document.getElementById("sel-jump");
+    const track = document.getElementById("prog-track");
+
+    for (const o of sceneData.obstacles) {
+      // Выпадающий список прыжков
+      const opt = document.createElement("option");
+      opt.value = o.number;
+      opt.textContent = `#${o.number} ${o.name} (X=${o.x}м)`;
+      selJump.appendChild(opt);
+
+      // Маркер на шкале прогресса
+      const dot = document.createElement("div");
+      dot.className = "obs-dot" + (o.kind === "bridge" ? " bridge" : o.kind === "no_fly" ? " nofly" : "");
+      dot.style.left = `${(o.x / 5450) * 100}%`;
+      dot.title = `#${o.number} ${o.name} (нажмите для перехода)`;
+      dot.onclick = () => jumpToObstacle(o.number);
+      track.appendChild(dot);
+
+      if (o.kind === "no_fly") {
+        // Красный цилиндр запретной зоны
+        const cyl = new THREE.Mesh(
+          new THREE.CylinderGeometry(o.radius_m, o.radius_m, 130, 40, 1, true),
+          new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.24, side: THREE.DoubleSide })
+        );
+        cyl.position.set(o.x, o.terrain_z + 60, -o.y);
+        scene.add(cyl);
+
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(o.radius_m - 1.5, o.radius_m + 1.5, 48),
+          new THREE.MeshBasicMaterial({ color: 0xf87171, side: THREE.DoubleSide })
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(o.x, o.terrain_z + 60, -o.y);
+        scene.add(ring);
+      } else if (o.kind === "bridge") {
+        // 3D-модель стального моста (нижняя плоскость строго на bridge_deck_m)
+        const deckY = sceneData.bridge_deck_m;
+        const deckThickness = 2.6;
+        const deck = new THREE.Mesh(
+          new THREE.BoxGeometry(70, deckThickness, 340),
+          new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.65, roughness: 0.35 })
+        );
+        deck.position.set(4800, deckY + deckThickness / 2, 0);
+        scene.add(deck);
+
+        // Боковые фермы моста
+        const trussMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7, roughness: 0.3, wireframe: true });
+        for (const dx of [-34, 34]) {
+          const truss = new THREE.Mesh(new THREE.BoxGeometry(1.4, 11, 340), trussMat);
+          truss.position.set(4800 + dx, deckY + deckThickness + 5.5, 0);
+          scene.add(truss);
+        }
+        // Опоры моста по краям русла
+        const pierMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 });
+        for (const pz of [-95, 95]) {
+          const pier = new THREE.Mesh(new THREE.BoxGeometry(58, 55, 10), pierMat);
+          pier.position.set(4800, deckY - 27.5, pz);
+          scene.add(pier);
+        }
+        // Кольцо зоны магнитной аномалии моста (R=70 м)
+        const magRing = new THREE.Mesh(
+          new THREE.RingGeometry(68, 72, 48),
+          new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+        );
+        magRing.rotation.x = -Math.PI / 2;
+        magRing.position.set(4800, waterY + 1.5, 0);
+        scene.add(magRing);
+      } else {
+        // Препятствия 2–7 (конус/цилиндр-ориентир)
+        const color = o.kind === "vertical" ? 0xf59e0b : 0x38bdf8;
+        const height = o.kind === "vertical" ? 68 : 48;
+        const mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(o.radius_m * 0.45, o.radius_m * 0.85, height, 18),
+          new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.28, roughness: 0.6 })
+        );
+        mesh.position.set(o.x, o.terrain_z + height / 2, -o.y);
+        scene.add(mesh);
+      }
+    }
+  }
+  buildObstacles();
+
+  // --- 4. Идеальный маршрут ---
+  const routePts = sceneData.route.map(p => enuToThree(p.x, p.y, p.z));
+  const routeGeo = new THREE.BufferGeometry().setFromPoints(routePts);
+  const routeLine = new THREE.Line(
+    routeGeo,
+    new THREE.LineDashedMaterial({ color: 0x3b82f6, dashSize: 16, gapSize: 9, linewidth: 2 })
+  );
+  routeLine.computeLineDistances();
+  scene.add(routeLine);
+
+  // Живые траектории (Истина и БИНС)
+  const MAX_TRAIL = 14000;
+  function createDynamicTrail(color) {
+    const arr = new Float32Array(MAX_TRAIL * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+    geo.setDrawRange(0, 0);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color }));
+    scene.add(line);
+    return { arr, geo, count: 0 };
+  }
+  const trueTrail = createDynamicTrail(0xef4444);
+  const estTrail = createDynamicTrail(0x22d3ee);
+
+  function pushTrailPt(trail, x, y, z) {
+    if (trail.count >= MAX_TRAIL) return;
+    const i = trail.count * 3;
+    trail.arr[i] = x; trail.arr[i + 1] = z; trail.arr[i + 2] = -y;
+    trail.count++;
+    trail.geo.setDrawRange(0, trail.count);
+    trail.geo.attributes.position.needsUpdate = true;
+  }
+  function clearTrails() {
+    trueTrail.count = 0; trueTrail.geo.setDrawRange(0, 0);
+    estTrail.count = 0; estTrail.geo.setDrawRange(0, 0);
+  }
+
+  // --- 5. 3D-модель квадрокоптера (локально: +X нос, +Y верх, +Z правый борт) ---
+  const droneGroup = new THREE.Group();
+  const DRONE_SCALE = 11.5; // Масштаб для чёткой видимости на трассе 5.5 км
+  const droneVisual = new THREE.Group();
+  droneVisual.scale.setScalar(DRONE_SCALE);
+  droneGroup.add(droneVisual);
+
+  // Корпус (стиль Mavic 3 Pro)
+  const bodyMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.42, 0.11, 0.18),
+    new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.45, roughness: 0.4 })
+  );
+  droneVisual.add(bodyMesh);
+
+  // Камера-подвес спереди
+  const gimbal = new THREE.Mesh(
+    new THREE.SphereGeometry(0.055, 12, 12),
+    new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8, roughness: 0.2 })
+  );
+  gimbal.position.set(0.22, -0.02, 0);
+  droneVisual.add(gimbal);
+
+  // 4 луча, моторы, винты и БАНО
+  const rotors = [];
+  const armAngles = [
+    { a: Math.PI / 4, led: 0x22c55e },       // правый передний (зелёный)
+    { a: -Math.PI / 4, led: 0xef4444 },      // левый передний (красный)
+    { a: 3 * Math.PI / 4, led: 0x38bdf8 },   // правый задний
+    { a: -3 * Math.PI / 4, led: 0x38bdf8 },  // левый задний
+  ];
+  const armMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.5, roughness: 0.4 });
+  const rotorMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.65, side: THREE.DoubleSide });
+
+  for (const cfg of armAngles) {
+    const cx = Math.cos(cfg.a) * 0.34;
+    const cz = Math.sin(cfg.a) * 0.34;
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.035), armMat);
+    arm.position.set(cx * 0.55, 0.01, cz * 0.55);
+    arm.rotation.y = -cfg.a;
+    droneVisual.add(arm);
+
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), new THREE.MeshBasicMaterial({ color: cfg.led }));
+    led.position.set(cx, -0.02, cz);
+    droneVisual.add(led);
+
+    const rotor = new THREE.Group();
+    rotor.position.set(cx, 0.045, cz);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.008, 0.032), rotorMat);
+    const disc = new THREE.Mesh(new THREE.RingGeometry(0.04, 0.165, 20), new THREE.MeshBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
+    disc.rotation.x = -Math.PI / 2;
+    rotor.add(blade, disc);
+    droneVisual.add(rotor);
+    rotors.push(rotor);
+  }
+  scene.add(droneGroup);
+
+  // 3 луча доплеровского радара IWR6843AOP (азимуты 0°, 120°, 240°, угол места 45°)
+  const radarBeamsGroup = new THREE.Group();
+  const beamMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.72 });
+  const beamLines = [];
+  for (const azDeg of [0, 120, 240]) {
+    const az = azDeg * Math.PI / 180;
+    const el = 45 * Math.PI / 180;
+    const dir = new THREE.Vector3(Math.sin(el) * Math.cos(az), -Math.cos(el), Math.sin(el) * Math.sin(az));
+    const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), dir.clone().multiplyScalar(80)]);
+    const l = new THREE.Line(g, beamMat);
+    l.userData.dir = dir;
+    radarBeamsGroup.add(l);
+    beamLines.push(l);
+  }
+  droneGroup.add(radarBeamsGroup);
+
+  // --- 6. «Призрак» БИНС + 3D-эллипсоид неопределённости 3σ EKF15 ---
+  const insGhost = new THREE.Mesh(
+    new THREE.OctahedronGeometry(2.6, 0),
+    new THREE.MeshBasicMaterial({ color: 0x22d3ee, wireframe: true })
+  );
+  scene.add(insGhost);
+
+  const covEllipsoid = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 20, 14),
+    new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.16, wireframe: true })
+  );
+  scene.add(covEllipsoid);
+
+  // Отрезок между истиной и оценкой БИНС
+  const errLinkGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  const errLink = new THREE.Line(errLinkGeo, new THREE.LineBasicMaterial({ color: 0xfb923c }));
+  scene.add(errLink);
+
+  // --- Управление Orbit-камерой мышкой ---
+  const orbit = { yaw: -1.15, pitch: 0.42, dist: 165, target: new THREE.Vector3(0, 115, 0), dragging: false, lx: 0, ly: 0 };
+  canvas.addEventListener("mousedown", e => { orbit.dragging = true; orbit.lx = e.clientX; orbit.ly = e.clientY; });
+  window.addEventListener("mouseup", () => { orbit.dragging = false; });
+  window.addEventListener("mousemove", e => {
+    if (!orbit.dragging) return;
+    const dx = e.clientX - orbit.lx, dy = e.clientY - orbit.ly;
+    orbit.lx = e.clientX; orbit.ly = e.clientY;
+    if (camMode !== "orbit" && camMode !== "top") setCamMode("orbit");
+    orbit.yaw -= dx * 0.006;
+    orbit.pitch = Math.max(0.08, Math.min(1.48, orbit.pitch + dy * 0.006));
+  });
+  canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    orbit.dist = Math.max(25, Math.min(2800, orbit.dist * (1 + Math.sign(e.deltaY) * 0.12)));
+  }, { passive: false });
+
+  window.addEventListener("resize", () => {
+    camera.aspect = wrap.clientWidth / wrap.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  });
+
+  // --- Отрисовка PFD (Авиагоризонт) ---
+  const pfdCtx = document.getElementById("pfd-canvas").getContext("2d");
+  function drawPFD(pkt) {
+    const ctx = pfdCtx, w = 186, h = 186, cx = w / 2, cy = h / 2;
+    const rollRad = (pkt.true.roll || 0) * Math.PI / 180;
+    const pitchDeg = pkt.true.pitch || 0;
+    const yawDeg = pkt.true.yaw || 0;
+    const estYaw = pkt.est.yaw || 0;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(0, 0, w, h, 8); ctx.clip();
+
+    // Небо и земля с учётом крена и тангажа
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-rollRad);
+    const py = pitchDeg * 3.2;
+    ctx.fillStyle = "#0e4d82"; ctx.fillRect(-180, -240 + py, 360, 240);
+    ctx.fillStyle = "#5c3b1e"; ctx.fillRect(-180, py, 360, 240);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(-180, py); ctx.lineTo(180, py); ctx.stroke();
+
+    // Шкала тангажа каждые 10°
+    ctx.strokeStyle = "rgba(255,255,255,0.65)"; ctx.lineWidth = 1;
+    ctx.fillStyle = "#fff"; ctx.font = "9px monospace"; ctx.textAlign = "right";
+    for (let deg = -30; deg <= 30; deg += 10) {
+      if (deg === 0) continue;
+      const y = py - deg * 3.2;
+      ctx.beginPath(); ctx.moveTo(-22, y); ctx.lineTo(22, y); ctx.stroke();
+      ctx.fillText(String(deg), -26, y + 3);
+    }
+    ctx.restore();
+
+    // Центральный символ самолёта
+    ctx.strokeStyle = "#facc15"; ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(cx - 32, cy); ctx.lineTo(cx - 10, cy); ctx.lineTo(cx - 10, cy + 6);
+    ctx.moveTo(cx + 32, cy); ctx.lineTo(cx + 10, cy); ctx.lineTo(cx + 10, cy + 6);
+    ctx.stroke();
+    ctx.fillStyle = "#facc15"; ctx.fillRect(cx - 2, cy - 2, 4, 4);
+
+    // Верхняя компасная лента
+    ctx.fillStyle = "rgba(8,13,24,0.78)"; ctx.fillRect(0, 0, w, 24);
+    ctx.fillStyle = "#e2e8f0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+    const pxPerDeg = 2.4;
+    for (let d = -40; d <= 40; d += 10) {
+      const hdg = ((Math.round(yawDeg / 10) * 10 + d) % 360 + 360) % 360;
+      const diff = ((hdg - yawDeg + 540) % 360) - 180;
+      const x = cx + diff * pxPerDeg;
+      ctx.strokeStyle = "rgba(255,255,255,0.45)";
+      ctx.beginPath(); ctx.moveTo(x, 18); ctx.lineTo(x, 24); ctx.stroke();
+      const lbl = hdg === 0 ? "N" : hdg === 90 ? "E" : hdg === 180 ? "S" : hdg === 270 ? "W" : String(hdg);
+      ctx.fillText(lbl, x, 14);
+    }
+    // Маркер курса БИНС (голубой треугольник)
+    const estDiff = ((estYaw - yawDeg + 540) % 360) - 180;
+    const ex = Math.max(8, Math.min(w - 8, cx + estDiff * pxPerDeg));
+    ctx.fillStyle = "#22d3ee";
+    ctx.beginPath(); ctx.moveTo(ex, 24); ctx.lineTo(ex - 4, 17); ctx.lineTo(ex + 4, 17); ctx.fill();
+
+    // Центральный треугольник курса
+    ctx.fillStyle = "#facc15";
+    ctx.beginPath(); ctx.moveTo(cx, 25); ctx.lineTo(cx - 4, 31); ctx.lineTo(cx + 4, 31); ctx.fill();
+
+    // Боковые плашки скорости и AGL
+    ctx.fillStyle = "rgba(8,13,24,0.75)";
+    ctx.fillRect(4, cy - 12, 42, 24);
+    ctx.fillRect(w - 46, cy - 12, 42, 24);
+    ctx.fillStyle = "#38bdf8"; ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+    ctx.fillText(`${(pkt.true.speed || 0).toFixed(1)}`, 25, cy + 4);
+    ctx.fillStyle = "#34d399";
+    ctx.fillText(`${(pkt.true.agl || 0).toFixed(0)}m`, w - 25, cy + 4);
+    ctx.restore();
+
+    document.getElementById("pfd-att").textContent = `R ${(pkt.true.roll || 0).toFixed(1)}° · P ${(pkt.true.pitch || 0).toFixed(1)}°`;
+    document.getElementById("pfd-hdg").textContent = `HDG ${String(Math.round(yawDeg)).padStart(3, "0")}°`;
+  }
+
+  // --- Отрисовка живого осциллографа ---
+  const scopeCtx = document.getElementById("scope-canvas").getContext("2d");
+  function drawScope() {
+    const ctx = scopeCtx, w = 380, h = 138;
+    ctx.clearRect(0, 0, w, h);
+
+    // Сетка
+    ctx.strokeStyle = "rgba(148,163,184,0.14)"; ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const y = (h / 4) * i;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+    if (hist.length < 2) return;
+
+    let series = [];
+    let refLines = [];
+    if (scopeMode === "err") {
+      series = [
+        { key: d => d.nav3d, color: "#fb923c", label: "БИНС 3D" },
+        { key: d => d.sig3, color: "rgba(34,211,238,0.65)", label: "3σ EKF" },
+        { key: d => d.route3d, color: "#ef4444", label: "Маршрут" },
+      ];
+    } else if (scopeMode === "mag") {
+      series = [{ key: d => d.magB, color: "#a855f7", label: "|B| мкТл" }];
+      refLines = [{ v: 61.24, color: "#ef4444" }, { v: 37.24, color: "#ef4444" }];
+    } else if (scopeMode === "alt") {
+      series = [
+        { key: d => d.zTrue, color: "#ef4444", label: "Истина Z" },
+        { key: d => d.zBaro, color: "#a855f7", label: "BMP390" },
+        { key: d => d.zEst, color: "#22d3ee", label: "БИНС Z" },
+      ];
+    } else {
+      series = [
+        { key: d => d.pwrW, color: "#f59e0b", label: "Мощность Вт" },
+        { key: d => d.spd * 10, color: "#14b8a6", label: "V×10" },
+      ];
+    }
+
+    let vmin = Infinity, vmax = -Infinity;
+    for (const d of hist) {
+      for (const s of series) {
+        const v = s.key(d);
+        if (v < vmin) vmin = v;
+        if (v > vmax) vmax = v;
+      }
+    }
+    for (const r of refLines) {
+      if (r.v < vmin) vmin = r.v;
+      if (r.v > vmax) vmax = r.v;
+    }
+    if (vmax - vmin < 1) { vmin -= 1; vmax += 1; }
+    const pad = (vmax - vmin) * 0.12;
+    vmin -= pad; vmax += pad;
+    const mapY = v => h - 14 - ((v - vmin) / (vmax - vmin)) * (h - 28);
+
+    // Опорные линии (например, пороги магнитометра)
+    for (const r of refLines) {
+      const y = mapY(r.v);
+      ctx.strokeStyle = r.color; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Линии данных
+    for (const s of series) {
+      ctx.strokeStyle = s.color; ctx.lineWidth = 1.7;
+      ctx.beginPath();
+      hist.forEach((d, i) => {
+        const x = (i / (HIST_MAX - 1)) * (w - 8) + 4;
+        const y = mapY(s.key(d));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    // Легенда и шкала Y
+    ctx.font = "10px monospace"; ctx.fillStyle = "#94a3b8";
+    ctx.fillText(vmax.toFixed(1), 5, 11);
+    ctx.fillText(vmin.toFixed(1), 5, h - 4);
+    let lx = 68;
+    for (const s of series) {
+      ctx.fillStyle = s.color;
+      ctx.fillText(`■ ${s.label}`, lx, 11);
+      lx += 82;
+    }
+  }
+
+  // --- Обновление всех виджетов из пакета телеметрии ---
+  function appendEvents(events) {
+    if (!events || !events.length) return;
+    const box = document.getElementById("event-log");
+    for (const ev of events) {
+      const div = document.createElement("div");
+      div.className = `ev-item ${ev.level}`;
+      const mm = String(Math.floor(ev.t / 60)).padStart(2, "0");
+      const ss = (ev.t % 60).toFixed(1).padStart(4, "0");
+      div.textContent = `[${mm}:${ss}] ${ev.text}`;
+      box.prepend(div);
+    }
+    while (box.children.length > 60) box.removeChild(box.lastChild);
+  }
+
+  function applyTelemetry(pkt, rebuildTrail = false) {
+    lastPkt = pkt;
+
+    // 1. 3D-позиция и матрица ориентации БПЛА из реального кватерниона
+    const pos = enuToThree(pkt.true.x, pkt.true.y, pkt.true.z);
+    droneGroup.position.copy(pos);
+
+    const R = pkt.true.R;
+    // Локальные оси дрона в Three.js: +X = Forward(body_x), +Y = Up(-body_z), +Z = Right(body_y)
+    const m = new THREE.Matrix4();
+    m.makeBasis(
+      new THREE.Vector3(R[0][0], R[2][0], -R[1][0]),
+      new THREE.Vector3(-R[0][2], -R[2][2], R[1][2]),
+      new THREE.Vector3(R[0][1], R[2][1], -R[1][1])
+    );
+    droneGroup.quaternion.setFromRotationMatrix(m);
+
+    // Длина 3 лучей радара до поверхности + цвет над водой
+    const beamLen = Math.max(8, (pkt.true.agl || 10) / Math.cos(Math.PI / 4));
+    beamMat.color.setHex(pkt.sensors.radar.over_water ? 0x38bdf8 : 0xf59e0b);
+    for (const l of beamLines) {
+      const arr = l.geometry.attributes.position.array;
+      const d = l.userData.dir;
+      arr[3] = d.x * beamLen; arr[4] = d.y * beamLen; arr[5] = d.z * beamLen;
+      l.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // Призрак БИНС и 3σ-эллипсоид EKF15
+    const estPos = enuToThree(pkt.est.x, pkt.est.y, pkt.est.z);
+    insGhost.position.copy(estPos);
+    covEllipsoid.position.copy(estPos);
+    covEllipsoid.scale.set(
+      Math.max(1.2, (pkt.est.sigma_x || 0.5) * 3),
+      Math.max(1.2, (pkt.est.sigma_z || 0.5) * 3),
+      Math.max(1.2, (pkt.est.sigma_y || 0.5) * 3)
+    );
+    const linkArr = errLinkGeo.attributes.position.array;
+    linkArr[0] = pos.x; linkArr[1] = pos.y; linkArr[2] = pos.z;
+    linkArr[3] = estPos.x; linkArr[4] = estPos.y; linkArr[5] = estPos.z;
+    errLinkGeo.attributes.position.needsUpdate = true;
+
+    // Траектории
+    if (rebuildTrail && pkt.full_trail_true) {
+      clearTrails();
+      for (const p of pkt.full_trail_true) pushTrailPt(trueTrail, p[0], p[1], p[2]);
+      for (const p of pkt.full_trail_est) pushTrailPt(estTrail, p[0], p[1], p[2]);
+    } else if (pkt.trail_true) {
+      for (const p of pkt.trail_true) pushTrailPt(trueTrail, p[0], p[1], p[2]);
+      for (const p of pkt.trail_est) pushTrailPt(estTrail, p[0], p[1], p[2]);
+    }
+
+    // 2. HUD сверху и прогресс
+    const mm = String(Math.floor(pkt.t / 60)).padStart(2, "0");
+    const ss = (pkt.t % 60).toFixed(1).padStart(4, "0");
+    document.getElementById("hud-stage-label").textContent = pkt.stage;
+    document.getElementById("hud-clock").textContent =
+      `T+ ${mm}:${ss} · X: ${pkt.true.x.toFixed(0)} м · Y: ${pkt.true.y.toFixed(0)} м · AGL: ${pkt.true.agl.toFixed(1)} м`;
+
+    const magBadge = document.getElementById("hud-mag-badge");
+    if (pkt.sensors.mag.accepted) {
+      magBadge.className = "pill pill-ok"; magBadge.textContent = "КОМПАС OK";
+    } else {
+      magBadge.className = "pill pill-err"; magBadge.textContent = "АНОМАЛИЯ МОСТА · КОМПАС ОТБРАКОВАН";
+    }
+    document.getElementById("hud-water-badge").style.display = pkt.env.over_water ? "inline-block" : "none";
+
+    const progPct = Math.max(0, Math.min(100, (pkt.true.x / 5450) * 100));
+    document.getElementById("prog-fill").style.width = `${progPct.toFixed(1)}%`;
+    document.getElementById("prog-text").textContent =
+      `${pkt.mission_stats.distance_m.toFixed(0)} / ${idealLength.toFixed(0)} м (${progPct.toFixed(0)}%)`;
+
+    // 3. Батарея
+    const b = pkt.battery;
+    const bCol = b.soc_pct > 40 ? "var(--ok)" : b.soc_pct > 20 ? "var(--warn)" : "var(--err)";
+    document.getElementById("bat-soc").textContent = `${b.soc_pct.toFixed(1)}%`;
+    document.getElementById("bat-soc").style.color = bCol;
+    document.getElementById("bat-fill").style.width = `${b.soc_pct}%`;
+    document.getElementById("bat-fill").style.background = bCol;
+    document.getElementById("bat-rem").textContent = `~${b.remaining_min.toFixed(1)} мин`;
+    document.getElementById("bat-v").textContent = `${b.voltage_v.toFixed(2)} В`;
+    document.getElementById("bat-a").textContent = `${b.current_a.toFixed(1)} А`;
+    document.getElementById("bat-w").textContent = `${b.power_w.toFixed(0)} Вт`;
+    document.getElementById("bat-mah").textContent = `${b.used_mah.toFixed(0)} мА·ч`;
+    document.getElementById("bat-t").textContent = `${b.temp_c.toFixed(1)} °C`;
+    document.getElementById("env-wind").textContent = `${pkt.env.wind_speed.toFixed(2)} м/с`;
+
+    // 4. Полёт и EKF
+    document.getElementById("fl-spd").textContent = `${pkt.true.speed.toFixed(2)} м/с`;
+    document.getElementById("fl-z").textContent = `${pkt.true.z.toFixed(1)} м`;
+    document.getElementById("fl-agl").textContent = `${pkt.true.agl.toFixed(1)} м`;
+    document.getElementById("err-nav").textContent = `${pkt.errors.nav_3d.toFixed(2)} м`;
+    document.getElementById("err-rms").textContent = `${pkt.errors.nav_rms.toFixed(1)} / ${pkt.errors.nav_max.toFixed(1)} м`;
+    document.getElementById("err-rt").textContent = `${pkt.errors.route_3d.toFixed(2)} м`;
+    document.getElementById("err-hdg").textContent = `${pkt.errors.heading_deg >= 0 ? "+" : ""}${pkt.errors.heading_deg.toFixed(2)}°`;
+    const sig3xy = 3 * Math.hypot(pkt.est.sigma_x, pkt.est.sigma_y);
+    document.getElementById("ekf-sig").textContent = `±${sig3xy.toFixed(1)} м`;
+    const bc = pkt.mission_stats.bridge_clearance_m;
+    document.getElementById("stat-bridge").textContent = bc == null ? "впереди" : `${bc.toFixed(2)} м`;
+
+    const safeEl = document.getElementById("stat-safety");
+    if (pkt.mission_stats.no_fly_violations > 0) {
+      safeEl.className = "pill pill-err"; safeEl.textContent = `НАРУШЕНИЙ: ${pkt.mission_stats.no_fly_violations}`;
+    } else {
+      safeEl.className = "pill pill-ok"; safeEl.textContent = "0 НАРУШЕНИЙ";
+    }
+
+    // 5. Датчики
+    const imu = pkt.sensors.imu;
+    document.getElementById("imu-bias").textContent = `b_g:${pkt.est.gyro_bias_deg_s.toFixed(3)}°/с · b_a:${pkt.est.accel_bias_m_s2.toFixed(3)}`;
+    document.getElementById("imu-val").innerHTML =
+      `ω: [${imu.gx.toFixed(2)}, ${imu.gy.toFixed(2)}, ${imu.gz.toFixed(2)}] °/с<br>` +
+      `f: [${imu.fx.toFixed(2)}, ${imu.fy.toFixed(2)}, ${imu.fz.toFixed(2)}] м/с²`;
+
+    const baro = pkt.sensors.baro;
+    document.getElementById("baro-temp").textContent = `${baro.temp_c.toFixed(1)} °C`;
+    document.getElementById("baro-val").textContent =
+      `H: ${baro.alt_m.toFixed(1)} м (Δ ${baro.err_m >= 0 ? "+" : ""}${baro.err_m.toFixed(2)} м) · P: ${baro.pressure_pa.toFixed(0)} Па`;
+
+    const mag = pkt.sensors.mag;
+    const ms = document.getElementById("mag-status");
+    ms.className = mag.accepted ? "pill pill-ok" : "pill pill-err";
+    ms.textContent = mag.accepted ? "ПРИНЯТ" : "ОТБРАКОВАН";
+    document.getElementById("mag-val").textContent =
+      `Курс: ${mag.heading_deg.toFixed(1)}° · |B|: ${mag.field_ut.toFixed(1)} мкТл · Отбр: ${mag.rejections}`;
+    const magPos = Math.max(0, Math.min(98, (mag.field_ut / 100) * 100));
+    const needle = document.getElementById("mag-needle");
+    needle.style.left = `${magPos}%`;
+    needle.style.background = mag.valid ? "#38bdf8" : "#ef4444";
+
+    const rad = pkt.sensors.radar;
+    const rs = document.getElementById("rad-surf");
+    rs.className = rad.over_water ? "pill pill-warn" : "pill pill-info";
+    rs.textContent = rad.over_water ? "ВОДА (σ=0.25)" : "ЗЕМЛЯ (σ=0.08)";
+    document.getElementById("rad-val").innerHTML =
+      `V: ${rad.speed_m_s.toFixed(2)} м/с · |f_D|: ${rad.mean_freq_hz.toFixed(0)} Гц · EKF: ${rad.updates}<br>` +
+      `Лучи: [${rad.beams.map(v => v.toFixed(1)).join(", ")}] м/с`;
+
+    const opt = pkt.sensors.opt, f = pkt.features;
+    document.getElementById("opt-val").textContent =
+      `VIO: ${f.vio ? (opt.vio_available ? "OK" : "ПОТЕРЯ") : "ОТКЛ"} · ` +
+      `РВ: ${f.radar_altimeter && opt.radar_agl_m != null ? opt.radar_agl_m.toFixed(1) + "м" : "ОТКЛ"} · ` +
+      `Ориентиры: ${f.landmark_correction ? `${opt.fixes_ok}/${opt.fixes_ok + opt.fixes_fail}` : "ОТКЛ"}`;
+
+    // 6. Осциллограф, PFD, события
+    hist.push({
+      nav3d: pkt.errors.nav_3d,
+      sig3: sig3xy,
+      route3d: pkt.errors.route_3d,
+      magB: mag.field_ut,
+      zTrue: pkt.true.z,
+      zBaro: baro.alt_m,
+      zEst: pkt.est.z,
+      pwrW: b.power_w,
+      spd: pkt.true.speed,
+    });
+    if (hist.length > HIST_MAX) hist.shift();
+    drawPFD(pkt);
+    drawScope();
+    appendEvents(pkt.events);
+
+    if (pkt.completed && playing) {
+      playing = false;
+      document.getElementById("btn-play").textContent = "▶ Повторить";
+    }
+  }
+
+  // --- Кнопки и события UI ---
+  function setCamMode(mode) {
+    camMode = mode;
+    document.querySelectorAll("#cam-buttons button").forEach(b => {
+      b.classList.toggle("active", b.dataset.cam === mode);
+    });
+    if (mode === "orbit" && lastPkt) {
+      orbit.target.copy(enuToThree(lastPkt.true.x, lastPkt.true.y, lastPkt.true.z));
+    }
+  }
+  document.querySelectorAll("#cam-buttons button").forEach(b => {
+    b.onclick = () => setCamMode(b.dataset.cam);
+  });
+
+  document.querySelectorAll("#scope-tabs button").forEach(b => {
+    b.onclick = () => {
+      scopeMode = b.dataset.scope;
+      document.querySelectorAll("#scope-tabs button").forEach(x => x.classList.toggle("active", x === b));
+      drawScope();
+    };
+  });
+
+  document.getElementById("sel-speed").onchange = e => { speedMult = Number(e.target.value); };
+  document.getElementById("chk-ellipsoid").onchange = e => { covEllipsoid.visible = e.target.checked; };
+  document.getElementById("chk-beams").onchange = e => { radarBeamsGroup.visible = e.target.checked; };
+
+  function currentFeatures() {
+    return {
+      vio: document.getElementById("chk-vio").checked,
+      radar_altimeter: document.getElementById("chk-ralt").checked,
+      landmark_correction: document.getElementById("chk-lm").checked,
+    };
+  }
+  for (const id of ["chk-vio", "chk-ralt", "chk-lm"]) {
+    document.getElementById(id).onchange = async () => {
+      const r = await fetch("/api/features", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(currentFeatures())
+      });
+      applyTelemetry(await r.json());
+    };
+  }
+
+  async function resetSim() {
+    playing = false;
+    document.getElementById("btn-play").textContent = "▶ Старт";
+    document.getElementById("event-log").innerHTML = "";
+    hist.length = 0;
+    clearTrails();
+    const r = await fetch("/api/reset", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seed: Number(document.getElementById("inp-seed").value) || 42, ...currentFeatures() })
+    });
+    const pkt = await r.json();
+    pushTrailPt(trueTrail, pkt.true.x, pkt.true.y, pkt.true.z);
+    pushTrailPt(estTrail, pkt.est.x, pkt.est.y, pkt.est.z);
+    applyTelemetry(pkt);
+  }
+
+  async function jumpToObstacle(num) {
+    if (!num) return;
+    const r = await fetch("/api/jump", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ obstacle_number: Number(num) })
+    });
+    const pkt = await r.json();
+    hist.length = 0;
+    applyTelemetry(pkt, true);
+    document.getElementById("sel-jump").value = "";
+  }
+  document.getElementById("sel-jump").onchange = e => jumpToObstacle(e.target.value);
+
+  document.getElementById("btn-reset").onclick = resetSim;
+  document.getElementById("btn-play").onclick = async () => {
+    if (lastPkt && lastPkt.completed) await resetSim();
+    playing = !playing;
+    document.getElementById("btn-play").textContent = playing ? "⏸ Пауза" : "▶ Старт";
+  };
+
+  // --- Цикл шагов симуляции (20 Гц опроса Python-движка) ---
+  setInterval(async () => {
+    if (!playing || stepInFlight) return;
+    stepInFlight = true;
+    try {
+      // 1 шаг = 0.005 с; 20 Гц => 10 шагов/тик = 1x реальное время
+      const steps = Math.max(2, Math.round(10 * speedMult));
+      const r = await fetch("/api/step", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ steps })
+      });
+      const pkt = await r.json();
+      if (!pkt.error) applyTelemetry(pkt);
+    } finally {
+      stepInFlight = false;
+    }
+  }, 50);
+
+  // --- Главный цикл 60 FPS WebGL (вращение винтов + плавная камера) ---
+  const camTargetPos = new THREE.Vector3();
+  const camDesired = new THREE.Vector3();
+  function animate() {
+    requestAnimationFrame(animate);
+
+    // Вращение винтов (быстрее при полёте и наборе мощности)
+    const spin = playing ? 0.55 + ((lastPkt?.battery?.power_w || 110) - 100) * 0.004 : 0.14;
+    rotors.forEach((r, idx) => { r.rotation.y += (idx % 2 === 0 ? 1 : -1) * spin; });
+
+    // Плавное обновление камеры
+    const dp = droneGroup.position;
+    if (camMode === "chase") {
+      const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(droneGroup.quaternion).setY(0).normalize();
+      camDesired.copy(dp).addScaledVector(fwd, -42).add(new THREE.Vector3(0, 16, 0));
+      camera.position.lerp(camDesired, 0.08);
+      camTargetPos.lerp(dp.clone().addScaledVector(fwd, 25), 0.12);
+      camera.lookAt(camTargetPos);
+    } else if (camMode === "fpv") {
+      const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(droneGroup.quaternion);
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(droneGroup.quaternion);
+      camera.position.copy(dp).addScaledVector(fwd, 3.2).add(new THREE.Vector3(0, -0.4, 0));
+      camera.up.copy(up);
+      camera.lookAt(dp.clone().addScaledVector(fwd, 90));
+    } else if (camMode === "top") {
+      camera.up.set(0, 1, 0);
+      camDesired.set(dp.x, dp.y + 420, dp.z + 12);
+      camera.position.lerp(camDesired, 0.1);
+      camera.lookAt(dp);
+    } else {
+      camera.up.set(0, 1, 0);
+      orbit.target.lerp(dp, 0.06);
+      const cp = Math.cos(orbit.pitch), sp = Math.sin(orbit.pitch);
+      camera.position.set(
+        orbit.target.x + orbit.dist * cp * Math.cos(orbit.yaw),
+        orbit.target.y + orbit.dist * sp,
+        orbit.target.z + orbit.dist * cp * Math.sin(orbit.yaw)
+      );
+      camera.lookAt(orbit.target);
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  // Первая инициализация сцены
+  pushTrailPt(trueTrail, lastPkt.true.x, lastPkt.true.y, lastPkt.true.z);
+  pushTrailPt(estTrail, lastPkt.est.x, lastPkt.est.y, lastPkt.est.z);
+  applyTelemetry(lastPkt);
+  camera.position.set(-45, lastPkt.true.z + 20, 28);
+  animate();
+}
+</script>
+</body>
+</html>
